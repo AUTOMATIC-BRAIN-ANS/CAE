@@ -58,6 +58,9 @@ COLUMN_SETS_ABP = [
     ["abp_finger[mm_Hg]", "co2[mm_Hg]", "etco2[mm_Hg]"]
 ]
 
+SAMPLING_RATE = 200
+PATH = ""
+
 def handle_path(path):
     """
     This function takes a path to a folder and returns a list of all the csv files in the folder.
@@ -318,8 +321,8 @@ def calculate_fundamental_component(signal, fs, low_f=0.66, high_f=3):
 
 
 if __name__ == '__main__':
-    sampling_rate = 200
-    csv_files, name= handle_path(r'C:\Users\Damian\PycharmProjects\comparison_abp_ecg\baseline')
+    sampling_rate = SAMPLING_RATE
+    csv_files, name= handle_path(PATH)
     dir_name = str(name) + "_hrv_analysis_results"
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
