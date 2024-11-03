@@ -119,8 +119,14 @@ def create_windows(df, window_size_in_minutes, sr):
     estimated_window_length = window_size_in_seconds * sr
 
     while window_end < df.index[-1]:
+
         window = df.loc[window_start:window_end]
         if abs(len(window) - estimated_window_length) <= 100:
+            first_peak = nk.ppg_findpeaks(window['Signal'], sampling_rate=sr)["PPG_Peaks"][0]
+            last_peak = nk.ppg_findpeaks(window['Signal'], sampling_rate=sr)["PPG_Peaks"][-1]
+            first_peak_time = window.index[first_peak]
+            last_peak_time = window.index[last_peak]
+            window = df.loc[first_peak_time:last_peak_time]
             all_windows.append(window)
         window_start = window_end
         window_end = window_start + pd.Timedelta(seconds=window_size_in_seconds)
