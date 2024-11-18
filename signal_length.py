@@ -10,19 +10,12 @@ the HRV parameters for the ECG signal with
 given signal lenght.
 """
 
-
+import argparse
 import neurokit2 as nk 
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
-
-
-CONTENT = [
-    'HRV_RMSSD',
-    "HRV_LFHF",
-    "HRV_SampEn"
-]
 
 COLUMN_SETS_ECG = [
     ['ekg[]', 'Datetime'], 
@@ -31,7 +24,15 @@ COLUMN_SETS_ECG = [
     ['ekg[]', "Datetime"]
 ]
 COLUMN_SETS_ABP = [
-    ['DateTime', 'abp_cnap[mmHg]']
+    ['DateTime', 'abp_cnap[mmHg]'],
+    ['ABP', 'DateTime'],
+    ['ABP_BaroIndex', 'DateTime'],
+    ['abp_finger[abp_finger]', "DateTime"], 
+    ['abp_cnap[mmHg]', "DateTime"], 
+    ["abp_finger[abp_finger]", "DateTime"],
+    ["abp_finger[mm_Hg]", "DateTime"]
+    
+    
 ]
 
 def handle_path(path):
@@ -116,92 +117,104 @@ def create_windows(df, window_size_in_minutes, sr):
     
     Returns
     -------
-    window : pandas.DataFrame
-        The first window of the given size.
+    all_windows : list
+        A list of all the windows.
     """
     all_windows = []
     window_size_in_seconds = window_size_in_minutes * 60
     window_start = df.index[0]
     window_end = window_start + pd.Timedelta(seconds=window_size_in_seconds) 
-    expected_length = int(window_size_in_seconds * sr)
-    first_iteration = True
+    estimated_window_length = window_size_in_seconds * sr
 
     while window_end < df.index[-1]:
+
         window = df.loc[window_start:window_end]
-        window_values = window['Signal'].values
+        if abs(len(window) - estimated_window_length) <= 0.1 * estimated_window_length:
+            window = df.loc[window_start:window_end]
+            all_windows.append(window)
         window_start = window_end
         window_end = window_start + pd.Timedelta(seconds=window_size_in_seconds)
+    return all_windows
 
-        peaks = nk.ppg_findpeaks(window_values, sampling_rate=sr)["PPG_Peaks"]
-        first_peak = peaks[0]
-
-        window_values = window_values[first_peak:]
-
-        if window_end < df.index[-1] and first_iteration:
-            return window_values
-
-        if  (expected_length > len(window_values) and len(window_values) > expected_length - 200) or first_iteration:
-            all_windows.append(window_values[:expected_length - sr])
+def signal_analize(df_list, sr, signal_type):
+    """
+    This function calculates the HRV parameters for signal.
+    
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The dataframe containing the data.
+    sr : int
+        The sampling rate of the data.
+    signal_type : str
+        The type of the signal.(ecg or abp)
+    
+    Returns
+    -------
+    hrv : pandas.DataFrame
+    """
+    global columns
+    all_hrv = []
+    for df in df_list:
+        signal = df['Signal']
+        if signal_type == "ecg":
+            rPeaks = nk.ecg_findpeaks(signal, sampling_rate=sr)["ECG_R_Peaks"]
+        elif signal_type == "abp":
+            rPeaks = nk.ppg_findpeaks(signal, sampling_rate=sr)["PPG_Peaks"]
+        else:
+            continue
         
-    matrix = np.array(all_windows)
-    mean_window = np.mean(matrix, axis=0)
+        try:
+            hrv = nk.hrv(rPeaks, sampling_rate=sr)
+            if hrv.shape != (1, 91):
+                continue
+            else:
+                all_hrv.append(hrv)
+        except Exception as e:
+            print(f"Error calculating HRV: {e}")
+            continue
+    columns = all_hrv[0].keys().tolist()
+    mean_hrv = np.mean(all_hrv, axis=0)
+    return pd.DataFrame(mean_hrv)
 
-    return mean_window  
-
-def calculate_ecg(df, sr):
+def analyze_signal_data(input_file, signal_type, sampling_rate, short_signals, outfile):
     """
-    This function calculates the HRV parameters for the ECG signal.
-    
+    Main function that takes the path to the folder with the data and 
+    calculates the HRV parameters for the ECG signal with given signal length.
+    The function saves the results to a csv file.
+
     Parameters
     ----------
-    df : pandas.DataFrame
-        The dataframe containing the data.
-    sr : int
+    input_file : str
+        The path to the folder with the data.
+    signal_type : str
+        The type of the signal.(ecg or abp)
+    sampling_rate : int
         The sampling rate of the data.
-    
+
     Returns
     -------
-    hrv : pandas.DataFrame
+    None
     """
-    df_ecg = df
-    rPeaks = nk.ecg_findpeaks(df_ecg, sampling_rate=sr)["ECG_R_Peaks"]
-    hrv = nk.hrv(rPeaks, sampling_rate=sr)
-    return hrv
-
-def calculate_abp(df, sr):
-    """
-    This function calculates the HRV parameters for the ECG signal.
+    if signal_type == "ecg":
+        column_sets = COLUMN_SETS_ECG
+        output_file_name = outfile + "_ecg_data.csv"
+    elif signal_type == "abp":
+        column_sets = COLUMN_SETS_ABP
+        output_file_name = outfile + "_abp_data.csv"
+    else:
+        print("Invalid signal type.")
+        return
     
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        The dataframe containing the data.
-    sr : int
-        The sampling rate of the data.
-    
-    Returns
-    -------
-    hrv : pandas.DataFrame
-    """
-    df_ecg = df
-    rPeaks = nk.ppg_findpeaks(df_ecg, sampling_rate=sr)["PPG_Peaks"]
-    try:
-        hrv = nk.hrv(rPeaks, sampling_rate=sr)
-    except:
-        return None
-    return hrv
-
-if __name__ == '__main__':
-    
-    path = r"C:\Users\Damian\Desktop\Long" # path to the folder with the data
+    path = input_file # r"C:\Users\Damian\Desktop\Long" # path to the folder with the data
     folder_path = Path(path)  # path to the folder with the data
     csv_files = list(folder_path.glob("*.csv"))  # list of all the csv files in the folder
-    window_sizes = [3, 5, 10, 30] # list of window sizes in minutes
-    data = [] # list to store the data
+    window_sizes = [3, 5, 10, 15] # list of window sizes in minutes
+    data = [] # list to store the data for the signal
 
     for csv_file in tqdm(csv_files,):
 
-        df = get_columns_from_file(COLUMN_SETS_ECG, csv_file) # get the data from the csv file
+        df = get_columns_from_file(column_sets, csv_file) # get the data from the csv file
         print(f"Analysing {csv_file.name}")
         if df is None:
             print(f"Skipping {csv_file.name}")
@@ -210,30 +223,64 @@ if __name__ == '__main__':
 
         time_series_length = len(df)
 
+        if not short_signals:
+               # set first peak as an index
+                first_peak = nk.ecg_findpeaks(df['Signal'], sampling_rate=sampling_rate)["ECG_R_Peaks"][0]
+                print(f"First peak: {first_peak}")
+                df = df.loc[first_peak:] 
+
         for size in tqdm(window_sizes, 
                          bar_format='{l_bar}%s{bar}%s{r_bar}' % ('\033[31m', '\033[0m'), 
                          leave=False, 
                          desc=f"{csv_file.name}"): # iterate over the window sizes
             
-            window_size_in_points = size * 200 * 60
+            window_size_in_points = size * sampling_rate * 60
 
             if window_size_in_points > time_series_length:
                 print(f"Skipping window size {size} minutes for {csv_file.name} due to insufficient data points.")
                 continue
+            
+            windows = create_windows(df, size, sampling_rate) # create the windows
 
-            windows = create_windows(df, size, 200) # create the windows
-
-            hrv = calculate_abp(windows, 200) # calculate the HRV parameters   
-            if hrv is None:
+            if windows == []:
+                print(f"Skipping window size {size} minutes for {csv_file.name} due to insufficient data points.")
                 continue
-            hrv_values = hrv.values.flatten()
-            hrv_values = [float(x) if not pd.isna(x) else np.nan for x in hrv_values] 
+
+            hrv = signal_analize(windows, sampling_rate, "abp") # calculate the HRV parameters   
+                
+            hrv_flat = hrv.values.flatten()
+
+            hrv_values = [float(x) if not pd.isna(x) else np.nan for x in hrv_flat] 
+            
             data.append([csv_file.name, size, *hrv_values])
             
 
 
-    columns = hrv.keys().tolist()
-    df = pd.DataFrame(data) # create a dataframe from the data list
+    df = pd.DataFrame(data)
     df.columns = ["File", "Window size"] + columns # add the columns to the dataframe
-    df.to_csv('time_dependent_data_ecg_data.csv', index=False) # save the dataframe to a csv file
-        
+    
+    df.to_csv(output_file_name, index=False) # save the dataframe to a csv file
+    
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description="Process signal data.")
+    parser.add_argument('input_file', type=str, help='Path to the input CSV file')
+    parser.add_argument('signal_type', type=str, choices=['ecg', 'abp'], help='Type of signal (ecg or abp)')
+    parser.add_argument('sampling_rate', type=int, help='Sampling rate of the signal')
+    parser.add_argument('short_signals', type=bool, help='Whether to analyze short signals')
+    parser.add_argument('output_file', type=str, help='Path to the output CSV file')
+    
+
+    args = parser.parse_args()
+    
+    input_file = args.input_file
+    signal_type = args.signal_type
+    sampling_rate = args.sampling_rate
+    short_signals = args.short_signals
+    output_file = args.output_file
+
+    analyze_signal_data(input_file, signal_type, sampling_rate, short_signals, output_file)
+    
+
