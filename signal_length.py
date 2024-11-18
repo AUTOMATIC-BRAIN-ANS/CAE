@@ -24,7 +24,15 @@ COLUMN_SETS_ECG = [
     ['ekg[]', "Datetime"]
 ]
 COLUMN_SETS_ABP = [
-    ['DateTime', 'abp_cnap[mmHg]']
+    ['DateTime', 'abp_cnap[mmHg]'],
+    ['ABP', 'DateTime'],
+    ['ABP_BaroIndex', 'DateTime'],
+    ['abp_finger[abp_finger]', "DateTime"], 
+    ['abp_cnap[mmHg]', "DateTime"], 
+    ["abp_finger[abp_finger]", "DateTime"],
+    ["abp_finger[mm_Hg]", "DateTime"]
+    
+    
 ]
 
 def handle_path(path):
@@ -121,12 +129,8 @@ def create_windows(df, window_size_in_minutes, sr):
     while window_end < df.index[-1]:
 
         window = df.loc[window_start:window_end]
-        if abs(len(window) - estimated_window_length) <= 100:
-            first_peak = nk.ppg_findpeaks(window['Signal'], sampling_rate=sr)["PPG_Peaks"][0]
-            last_peak = nk.ppg_findpeaks(window['Signal'], sampling_rate=sr)["PPG_Peaks"][-1]
-            first_peak_time = window.index[first_peak]
-            last_peak_time = window.index[last_peak]
-            window = df.loc[first_peak_time:last_peak_time]
+        if abs(len(window) - estimated_window_length) <= 0.1 * estimated_window_length:
+            window = df.loc[window_start:window_end]
             all_windows.append(window)
         window_start = window_end
         window_end = window_start + pd.Timedelta(seconds=window_size_in_seconds)
@@ -173,7 +177,7 @@ def signal_analize(df_list, sr, signal_type):
     mean_hrv = np.mean(all_hrv, axis=0)
     return pd.DataFrame(mean_hrv)
 
-def analyze_signal_data(input_file, signal_type, sampling_rate):
+def analyze_signal_data(input_file, signal_type, sampling_rate, short_signals, outfile):
     """
     Main function that takes the path to the folder with the data and 
     calculates the HRV parameters for the ECG signal with given signal length.
@@ -194,10 +198,10 @@ def analyze_signal_data(input_file, signal_type, sampling_rate):
     """
     if signal_type == "ecg":
         column_sets = COLUMN_SETS_ECG
-        output_file_name = "time_dependent_data_ecg_data.csv"
+        output_file_name = outfile + "_ecg_data.csv"
     elif signal_type == "abp":
         column_sets = COLUMN_SETS_ABP
-        output_file_name = "time_dependent_data_abp_data.csv"
+        output_file_name = outfile + "_abp_data.csv"
     else:
         print("Invalid signal type.")
         return
@@ -205,7 +209,7 @@ def analyze_signal_data(input_file, signal_type, sampling_rate):
     path = input_file # r"C:\Users\Damian\Desktop\Long" # path to the folder with the data
     folder_path = Path(path)  # path to the folder with the data
     csv_files = list(folder_path.glob("*.csv"))  # list of all the csv files in the folder
-    window_sizes = [3, 5, 10, 30] # list of window sizes in minutes
+    window_sizes = [3, 5, 10, 15] # list of window sizes in minutes
     data = [] # list to store the data for the signal
 
     for csv_file in tqdm(csv_files,):
@@ -219,6 +223,12 @@ def analyze_signal_data(input_file, signal_type, sampling_rate):
 
         time_series_length = len(df)
 
+        if not short_signals:
+               # set first peak as an index
+                first_peak = nk.ecg_findpeaks(df['Signal'], sampling_rate=sampling_rate)["ECG_R_Peaks"][0]
+                print(f"First peak: {first_peak}")
+                df = df.loc[first_peak:] 
+
         for size in tqdm(window_sizes, 
                          bar_format='{l_bar}%s{bar}%s{r_bar}' % ('\033[31m', '\033[0m'), 
                          leave=False, 
@@ -229,7 +239,7 @@ def analyze_signal_data(input_file, signal_type, sampling_rate):
             if window_size_in_points > time_series_length:
                 print(f"Skipping window size {size} minutes for {csv_file.name} due to insufficient data points.")
                 continue
-
+            
             windows = create_windows(df, size, sampling_rate) # create the windows
 
             if windows == []:
@@ -259,13 +269,18 @@ if __name__ == '__main__':
     parser.add_argument('input_file', type=str, help='Path to the input CSV file')
     parser.add_argument('signal_type', type=str, choices=['ecg', 'abp'], help='Type of signal (ecg or abp)')
     parser.add_argument('sampling_rate', type=int, help='Sampling rate of the signal')
+    parser.add_argument('short_signals', type=bool, help='Whether to analyze short signals')
+    parser.add_argument('output_file', type=str, help='Path to the output CSV file')
+    
 
     args = parser.parse_args()
     
     input_file = args.input_file
     signal_type = args.signal_type
     sampling_rate = args.sampling_rate
+    short_signals = args.short_signals
+    output_file = args.output_file
 
-    analyze_signal_data(input_file, signal_type, sampling_rate)
+    analyze_signal_data(input_file, signal_type, sampling_rate, short_signals, output_file)
     
 
