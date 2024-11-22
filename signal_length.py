@@ -123,16 +123,15 @@ def create_windows(r_peaks, window_size_in_minutes, sr):
         A list of all the windows.
     """
     window_size = window_size_in_minutes * 60 * sr # window size in samples
-    window = [] # list to store current window
     all_windows = [] # list to store all the windows
-    window_start = 0 # start of the window
+    r_peaks = np.array(r_peaks)
 
-    for r_peak in r_peaks: # iterate over the R-peaks
-        window.append(r_peak) # add the R-peak to the window
-        if r_peak - window_start >= 0.9 * window_size: # if the window is almost full
-            window_start = r_peak # set the start of the window to the current R-peak
-            all_windows.append(window) # add the window to the list of all windows
-            window = [] # reset the window
+    for i in range(max(r_peaks) // window_size): # iterate over the windows
+        all_windows.append(r_peaks[(r_peaks >= i*window_size) & (r_peaks < (i+1)*window_size)]) # add r-peaks to the window
+    bias = 0 if not all_windows else all_windows[-1][-1] # calculate the bias     
+    if window_size * 0.9 + bias < max(r_peaks): # our esitmated bias is due to the tolerance of 10% of the window size
+        all_windows.append(r_peaks[r_peaks >= (i + 1) * window_size]) # add the r-peaks to the last window
+    tqdm.write('{} windows detected: '.format(str(len(all_windows)))) # print the number of windows
     return all_windows 
 
 
@@ -158,18 +157,17 @@ def calculate_r_peaks(df, signal_type, sr):
     return r_peaks
     
 
-def signal_analize(r_peaks_patients, sr):
+def signal_analize(r_peaks_patient, sr):
     """
     This function calculates the HRV parameters for signal.
     
     Parameters
     ----------
-    df : pandas.DataFrame
+    r_peaks_patient : List
         The dataframe containing the data.
     sr : int
         The sampling rate of the data.
-    signal_type : str
-        The type of the signal.(ecg or abp)
+
     
     Returns
     -------
@@ -177,9 +175,9 @@ def signal_analize(r_peaks_patients, sr):
     """
     global columns # list of the HRV parameters
     all_hrv = [] # list to store the HRV parameters for all the windows
-    for r_peaks_patient in r_peaks_patients: # iterate over the windows
+    for r_peak_patient in r_peaks_patient: # iterate over the windows
         try: 
-            hrv = nk.hrv(r_peaks_patient, sampling_rate=sr) # calculate the HRV parameters
+            hrv = nk.hrv(r_peak_patient, sampling_rate=sr) # calculate the HRV parameters
             if hrv.shape != (1, 91): # if the HRV parameters are not calculated correctly
                 continue             # skip the window
             else:
@@ -225,7 +223,7 @@ def analyze_signal_data(input_file, signal_type, sampling_rate, outfile):
         output_file_name = outfile + "_abp_data.csv"
     else:
         tqdm.write("Invalid signal type.")
-        return
+        return 
     
     path = input_file # path to the folder with the data
     folder_path = Path(path)  # path to the folder with the data
