@@ -125,12 +125,16 @@ def create_windows(r_peaks, window_size_in_minutes, sr):
     window_size = window_size_in_minutes * 60 * sr # window size in samples
     all_windows = [] # list to store all the windows
     r_peaks = np.array(r_peaks)
+    num_windows = max(r_peaks) // window_size
 
-    for i in range(max(r_peaks) // window_size): # iterate over the windows
+    for i in range(num_windows): # iterate over the windows
         all_windows.append(r_peaks[(r_peaks >= i*window_size) & (r_peaks < (i+1)*window_size)]) # add r-peaks to the window
+
     bias = 0 if not all_windows else all_windows[-1][-1] # calculate the bias     
+
     if window_size * 0.9 + bias < max(r_peaks): # our esitmated bias is due to the tolerance of 10% of the window size
-        all_windows.append(r_peaks[r_peaks >= (i + 1) * window_size]) # add the r-peaks to the last window
+        all_windows.append(r_peaks[r_peaks >= num_windows * window_size]) # add the r-peaks to the last window
+        
     tqdm.write('{} windows detected: '.format(str(len(all_windows)))) # print the number of windows
     return all_windows 
 
