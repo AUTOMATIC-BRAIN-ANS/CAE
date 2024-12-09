@@ -181,7 +181,7 @@ def signal_analize(r_peaks_patient, sr):
     all_hrv = [] # list to store the HRV parameters for all the windows
     for r_peak_patient in r_peaks_patient: # iterate over the windows
         try: 
-            hrv = nk.hrv(r_peak_patient, sampling_rate=sr) # calculate the HRV parameters
+            hrv = nk.hrv(r_peak_patient, sampling_rate=sr) if len(r_peak_patient) > 2 else [] # calculate the HRV parameters
             if hrv.shape != (1, 91): # if the HRV parameters are not calculated correctly
                 continue             # skip the window
             else:
@@ -196,7 +196,7 @@ def signal_analize(r_peaks_patient, sr):
 
 
 
-def analyze_signal_data(input_file, signal_type, sampling_rate, outfile):
+def analyze_signal_data(input_file, signal_type, sampling_rate, outfile, make_shorter):
     """
     Main function that takes the path to the folder with the data and 
     calculates the HRV parameters for the ECG signal with given signal length.
@@ -246,6 +246,10 @@ def analyze_signal_data(input_file, signal_type, sampling_rate, outfile):
 
         df = df.dropna() 
         
+        if make_shorter:
+            # Set signal length to 5 minutes
+            df = df[:sampling_rate*60*5]
+
         r_peaks = calculate_r_peaks(df, signal_type, sampling_rate) 
 
         if r_peaks is None: 
@@ -287,6 +291,7 @@ if __name__ == '__main__':
     parser.add_argument('signal_type', type=str, choices=['ecg', 'abp'], help='Type of signal (ecg or abp)')
     parser.add_argument('sampling_rate', type=int, help='Sampling rate of the signal')
     parser.add_argument('output_file', type=str, help='Path to the output CSV file')
+    parser.add_argument('make_shorter', type=bool, help='Make the signal shorter')
 
     args = parser.parse_args()
 
@@ -294,7 +299,8 @@ if __name__ == '__main__':
     signal_type = args.signal_type
     sampling_rate = args.sampling_rate
     output_file = args.output_file
+    make_shorter = args.make_shorter
 
-    analyze_signal_data(input_file, signal_type, sampling_rate, output_file)
+    analyze_signal_data(input_file, signal_type, sampling_rate, output_file, make_shorter)
     
 
