@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
+import pyhrv.frequency_domain as fd
 
 COLUMN_SETS_ECG = [
     'ekg[]',
@@ -181,8 +182,16 @@ def signal_analize(r_peaks_patient, sr):
     all_hrv = [] # list to store the HRV parameters for all the windows
     for r_peak_patient in r_peaks_patient: # iterate over the windows
         try: 
-            hrv = nk.hrv(r_peak_patient, sampling_rate=sr) if len(r_peak_patient) > 2 else [] # calculate the HRV parameters
-            if hrv.shape != (1, 91): # if the HRV parameters are not calculated correctly
+            hrv_results = fd.lomb_psd(rpeaks=r_peak_patient, show=False) if len(r_peak_patient) > 2 else [] # calculate the HRV parameters
+            hrv_data = {
+                'lf': hrv_results['lomb_abs'][1],
+                'hf': hrv_results['lomb_abs'][2],
+                'lf/hf_ratio': hrv_results['lomb_ratio'],
+                'total_power': hrv_results['lomb_total'],
+            }
+
+            hrv = pd.DataFrame([hrv_data])
+            if hrv.shape != (1, 4): # if the HRV parameters are not calculated correctly
                 continue             # skip the window
             else:
                 all_hrv.append(hrv) # add the HRV parameters to the list
