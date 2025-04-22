@@ -154,9 +154,11 @@ def calculate_r_peaks(df, signal_type, sr):
         The series containing the R-peaks.
     """
     if signal_type == "ecg":
-        r_peaks = nk.ecg_findpeaks(df, sampling_rate=sr)["ECG_R_Peaks"]
+        ecg_clean = nk.ecg_clean(df, sampling_rate=sr, method="elgendi2010")
+        r_peaks = nk.ecg_findpeaks(ecg_clean, sampling_rate=sr)["ECG_R_Peaks"]
     elif signal_type == "abp":
-        r_peaks = nk.ppg_findpeaks(df, sampling_rate=sr)["PPG_Peaks"]
+        ppg_clean = nk.ppg_clean(df, sampling_rate=sr)
+        r_peaks = nk.ppg_findpeaks(ppg_clean, sampling_rate=sr)["PPG_Peaks"]
     
     return r_peaks
     
